@@ -176,6 +176,3 @@ def chat():
     )
 
     return jsonify({'answer': ai_response.choices[0].message.content})
-
-if __name__ == '__main__':
-    app.run()
