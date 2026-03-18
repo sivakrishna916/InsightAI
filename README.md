@@ -3,10 +3,8 @@
 > Upload any dataset and instantly get AI-generated insights, visualizations, and natural language analysis.
 
 ---
-
 ## 🚀 Live Demo
-[Coming Soon - Deploying on Render]
-
+[👉 Click here to try InsightAI](https://insightai-ir1j.onrender.com)
 ---
 
 ## 📌 Features
