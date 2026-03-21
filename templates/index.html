@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>InsightAI</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2.26.0/plotly.min.js"></script>
 </head>
 <body>
 
@@ -74,11 +74,46 @@
                 <div id="chart2"></div>
                 <div id="chart3"></div>
                 <div id="chart4"></div>
+                <div id="chart5"></div>
+            </div>
+
+            <!-- Chart Builder -->
+            <div class="section">
+                <h2>🛠️ Build Your Own Chart</h2>
+                <div class="chart-builder">
+                    <div class="builder-row">
+                        <div class="builder-item">
+                            <label>X Axis</label>
+                            <select id="xAxis"></select>
+                        </div>
+                        <div class="builder-item">
+                            <label>Y Axis (numeric)</label>
+                            <select id="yAxis"></select>
+                        </div>
+                        <div class="builder-item">
+                            <label>Chart Type</label>
+                            <select id="chartType">
+                                <option value="bar">Bar Chart</option>
+                                <option value="line">Line Chart</option>
+                                <option value="scatter">Scatter Plot</option>
+                                <option value="pie">Pie Chart</option>
+                                <option value="box">Box Plot</option>
+                                <option value="histogram">Histogram</option>
+                            </select>
+                        </div>
+                        <div class="builder-item">
+                            <label>&nbsp;</label>
+                            <button onclick="buildChart()">🎨 Generate Chart</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="customChart"></div>
             </div>
 
             <div class="section">
                 <h2>🤖 AI Insights</h2>
                 <div id="insights"></div>
+                <div class="suggestions" id="suggestions"></div>
             </div>
 
             <div class="section">
@@ -95,15 +130,17 @@
 
     <script>
         const fileInput = document.getElementById('fileInput');
-        
+        let uploadedFile = null;
+
         fileInput.addEventListener('change', function() {
-            document.getElementById('fileName').textContent = this.files[0].name;
+            uploadedFile = this.files[0];
+            document.getElementById('fileName').textContent = uploadedFile.name;
             document.getElementById('analyzeBtn').style.display = 'inline-block';
         });
 
         async function analyzeData() {
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', uploadedFile);
 
             document.getElementById('loadingMsg').style.display = 'block';
             document.getElementById('results').style.display = 'none';
@@ -134,14 +171,81 @@
             }
 
             if (data.insights) {
-                document.getElementById('insights').innerHTML = 
+                document.getElementById('insights').innerHTML =
                     data.insights.split('\n')
                     .filter(line => line.trim())
                     .map(line => `<p class="insight-line">${line}</p>`)
                     .join('');
             }
 
+            populateDropdowns(data.stats.column_names);
+            showSuggestions(data.stats.column_names);
             document.getElementById('results').style.display = 'block';
+        }
+
+        function populateDropdowns(columns) {
+            const xAxis = document.getElementById('xAxis');
+            const yAxis = document.getElementById('yAxis');
+            xAxis.innerHTML = '';
+            yAxis.innerHTML = '';
+            columns.forEach(col => {
+                xAxis.innerHTML += `<option value="${col}">${col}</option>`;
+                yAxis.innerHTML += `<option value="${col}">${col}</option>`;
+            });
+        }
+
+        function showSuggestions(columns) {
+            const suggestions = [
+                `Try asking: "Which ${columns[0]} has the highest value?"`,
+                `Try asking: "What is the average ${columns[1] || columns[0]}?"`,
+                `Try asking: "Show me the top 5 rows by ${columns[0]}"`,
+                `Try asking: "Are there any trends in this data?"`
+            ];
+            document.getElementById('suggestions').innerHTML =
+                suggestions.map(s => `<span class="suggestion-chip" onclick="useSuggestion('${s.replace('Try asking: ', '').replace(/"/g, '')}')">${s}</span>`).join('');
+        }
+
+        function useSuggestion(text) {
+            document.getElementById('chatInput').value = text;
+            askQuestion();
+        }
+
+        async function buildChart() {
+            const xAxis = document.getElementById('xAxis').value;
+            const yAxis = document.getElementById('yAxis').value;
+            const chartType = document.getElementById('chartType').value;
+
+            if (!uploadedFile) {
+                alert('Please upload a file first');
+                return;
+            }
+
+            // Clear previous result
+            document.getElementById('customChart').innerHTML =
+                '<p style="color:#a5b4fc; padding:10px;">⏳ Generating chart...</p>';
+
+            const formData = new FormData();
+            formData.append('file', uploadedFile);
+            formData.append('x_col', xAxis);
+            formData.append('y_col', yAxis);
+            formData.append('chart_type', chartType);
+
+            const response = await fetch('/build_chart', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await response.json();
+
+            if (data.chart) {
+                const chartData = JSON.parse(data.chart);
+                console.log('Y values:', chartData.data[0].y);
+                document.getElementById('customChart').innerHTML = '<div id="customChartInner"></div>';
+                Plotly.newPlot('customChartInner', chartData.data, chartData.layout, {responsive: true});
+            } else if (data.error) {
+                document.getElementById('customChart').innerHTML =
+                    `<p style="color:#ff6b6b; padding:10px;">⚠️ ${data.error}</p>`;
+            }
         }
 
         async function askQuestion() {
@@ -149,13 +253,13 @@
             if (!question) return;
 
             const chatBox = document.getElementById('chatBox');
-            
+
             chatBox.innerHTML += `<div class="chat-user">You: ${question}</div>`;
             document.getElementById('chatInput').value = '';
             chatBox.innerHTML += `<div class="chat-ai">🤖 AI is thinking...</div>`;
 
             const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
+            formData.append('file', uploadedFile);
             formData.append('question', question);
 
             const response = await fetch('/chat', {
@@ -164,7 +268,7 @@
             });
 
             const data = await response.json();
-            
+
             const messages = chatBox.querySelectorAll('.chat-ai');
             messages[messages.length - 1].innerHTML = `🤖 AI: ${data.answer}`;
             chatBox.scrollTop = chatBox.scrollHeight;
