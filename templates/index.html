@@ -131,6 +131,7 @@
     <script>
         const fileInput = document.getElementById('fileInput');
         let uploadedFile = null;
+        let chatHistory = [];
 
         fileInput.addEventListener('change', function() {
             uploadedFile = this.files[0];
@@ -145,42 +146,58 @@
             document.getElementById('loadingMsg').style.display = 'block';
             document.getElementById('results').style.display = 'none';
 
-            const response = await fetch('/analyze', {
-                method: 'POST',
-                body: formData
-            });
-
-            const data = await response.json();
-
-            document.getElementById('loadingMsg').style.display = 'none';
-
-            document.getElementById('rows').textContent = data.stats.rows;
-            document.getElementById('columns').textContent = data.stats.columns;
-            document.getElementById('missing').textContent = data.stats.missing;
-            document.getElementById('duplicates').textContent = data.stats.duplicates;
-            document.getElementById('outliers').textContent = data.stats.outliers;
-            document.getElementById('quality_score').textContent = data.stats.quality_score + '%';
-
-            document.getElementById('previewTable').innerHTML = data.preview;
-
-            if (data.charts) {
-                data.charts.forEach((chart, i) => {
-                    const chartData = JSON.parse(chart);
-                    Plotly.newPlot('chart' + i, chartData.data, chartData.layout);
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
                 });
-            }
 
-            if (data.insights) {
-                document.getElementById('insights').innerHTML =
-                    data.insights.split('\n')
-                    .filter(line => line.trim())
-                    .map(line => `<p class="insight-line">${line}</p>`)
-                    .join('');
-            }
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || 'Server error');
+                }
 
-            populateDropdowns(data.stats.column_names);
-            showSuggestions(data.stats.column_names);
-            document.getElementById('results').style.display = 'block';
+                const data = await response.json();
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                document.getElementById('loadingMsg').style.display = 'none';
+
+                document.getElementById('rows').textContent = data.stats.rows;
+                document.getElementById('columns').textContent = data.stats.columns;
+                document.getElementById('missing').textContent = data.stats.missing;
+                document.getElementById('duplicates').textContent = data.stats.duplicates;
+                document.getElementById('outliers').textContent = data.stats.outliers;
+                document.getElementById('quality_score').textContent = data.stats.quality_score + '%';
+
+                document.getElementById('previewTable').innerHTML = data.preview;
+
+                if (data.charts) {
+                    data.charts.forEach((chart, i) => {
+                        const chartData = JSON.parse(chart);
+                        Plotly.newPlot('chart' + i, chartData.data, chartData.layout);
+                    });
+                }
+
+                if (data.insights) {
+                    document.getElementById('insights').innerHTML =
+                        data.insights.split('\n')
+                        .filter(line => line.trim())
+                        .map(line => `<p class="insight-line">${line}</p>`)
+                        .join('');
+                }
+
+                populateDropdowns(data.stats.column_names);
+                showSuggestions(data.stats.column_names);
+                document.getElementById('results').style.display = 'block';
+
+            } catch (error) {
+                document.getElementById('loadingMsg').style.display = 'none';
+                document.getElementById('results').style.display = 'none';
+                alert('Error: ' + error.message);
+            }
         }
 
         function populateDropdowns(columns) {
@@ -258,25 +275,34 @@
             document.getElementById('chatInput').value = '';
             chatBox.innerHTML += `<div class="chat-ai">🤖 AI is thinking...</div>`;
 
+            // Add to history
+            chatHistory.push({"role": "user", "content": question});
+
             const formData = new FormData();
             formData.append('file', uploadedFile);
             formData.append('question', question);
+            formData.append('history', JSON.stringify(chatHistory));
 
-            const response = await fetch('/chat', {
-                method: 'POST',
-                body: formData
-            });
+            try {
+                const response = await fetch('/chat', {
+                    method: 'POST',
+                    body: formData
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            const messages = chatBox.querySelectorAll('.chat-ai');
-            messages[messages.length - 1].innerHTML = `🤖 AI: ${data.answer}`;
-            chatBox.scrollTop = chatBox.scrollHeight;
+                // Add AI response to history
+                chatHistory.push({"role": "assistant", "content": data.answer});
+
+                const messages = chatBox.querySelectorAll('.chat-ai');
+                messages[messages.length - 1].innerHTML = `🤖 AI: ${data.answer}`;
+                chatBox.scrollTop = chatBox.scrollHeight;
+
+            } catch (error) {
+                const messages = chatBox.querySelectorAll('.chat-ai');
+                messages[messages.length - 1].innerHTML = `🤖 Sorry, something went wrong.`;
+            }
         }
-
-        document.getElementById('chatInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') askQuestion();
-        });
     </script>
 
 </body>

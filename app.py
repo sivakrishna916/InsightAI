@@ -9,7 +9,6 @@ load_dotenv()
 
 app = Flask(__name__)
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -17,43 +16,80 @@ def index():
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    file = request.files['file']
-    df = read_file(file)
-    stats = get_data_quality(df)
-    charts = generate_auto_charts(df)
-    insights = get_insights(df, stats['missing'], stats['duplicates'])
+    try:
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file uploaded.'}), 400
 
-    return jsonify({
-        'stats': stats,
-        'charts': charts,
-        'preview': df.head(5).to_html(classes='preview-table'),
-        'insights': insights
-    })
+        df, error = read_file(file)
+        if error:
+            return jsonify({'error': error}), 400
+
+        stats = get_data_quality(df)
+        charts = generate_auto_charts(df)
+        insights = get_insights(df, stats['missing'], stats['duplicates'])
+
+        return jsonify({
+            'stats': stats,
+            'charts': charts,
+            'preview': df.head(5).to_html(classes='preview-table'),
+            'insights': insights
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Something went wrong: {str(e)}'}), 500
 
 
 @app.route('/build_chart', methods=['POST'])
 def build_chart():
-    file = request.files['file']
-    x_col = request.form.get('x_col')
-    y_col = request.form.get('y_col')
-    chart_type = request.form.get('chart_type')
-    df = read_file(file)
+    try:
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return jsonify({'error': 'No file uploaded.'}), 400
 
-    chart, error = build_custom_chart(df, x_col, y_col, chart_type)
+        x_col = request.form.get('x_col')
+        y_col = request.form.get('y_col')
+        chart_type = request.form.get('chart_type')
 
-    if error:
-        return jsonify({'error': error})
-    return jsonify({'chart': chart})
+        df, error = read_file(file)
+        if error:
+            return jsonify({'error': error}), 400
+
+        chart, error = build_custom_chart(df, x_col, y_col, chart_type)
+        if error:
+            return jsonify({'error': error})
+
+        return jsonify({'chart': chart})
+
+    except Exception as e:
+        return jsonify({'error': f'Something went wrong: {str(e)}'}), 500
 
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    file = request.files['file']
-    question = request.form.get('question')
-    df = read_file(file)
-    answer = answer_question(df, question)
-    return jsonify({'answer': answer})
+    try:
+        file = request.files.get('file')
+        if not file or file.filename == '':
+            return jsonify({'answer': 'No file uploaded.'})
 
+        question = request.form.get('question', '').strip()
+        if not question:
+            return jsonify({'answer': 'Please ask a question.'})
 
-if __name__ == '__main__':
+        history = request.form.get('history', '[]')
+        import json
+        history = json.loads(history)
+
+        df, error = read_file(file)
+        if error:
+            return jsonify({'answer': f'Could not read file: {error}'})
+
+        answer = answer_question(df, question, history)
+        return jsonify({'answer': answer})
+
+    except Exception as e:
+        return jsonify({'answer': f'Something went wrong: {str(e)}'})
+    
+if __name__ == "__main__":
+    print("🚀 Starting Flask server...")
     app.run(debug=True)
